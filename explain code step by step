@@ -1,0 +1,225 @@
+# Data Loading and Exploration
+import pandas as pd
+
+# Load the dataset
+df = pd.read_csv('/content/WA_Fn-UseC_-Telco-Customer-Churn.csv')
+
+# Display the first few rows of the dataframe
+print(df.head())
+
+# Summary statistics
+print(df.describe())
+
+# Check for missing values
+print(df.isnull().sum())
+
+# Data Preprocessing
+
+# Drop customerID column
+df.drop(columns=['customerID'], inplace=True)
+
+# Convert TotalCharges to numeric, coerce errors and fill missing values
+df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+df['TotalCharges'].fillna(df['TotalCharges'].median(), inplace=True)
+
+# Encode categorical variables
+df = pd.get_dummies(df, drop_first=True)
+
+# Define features and target
+X = df.drop(columns=['Churn_Yes'])
+y = df['Churn_Yes']
+
+# Split data into training and testing sets
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Feature Selection
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Compute correlation matrix
+corr = df.corr()
+
+# Plot the heatmap
+plt.figure(figsize=(12, 10))
+sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm')
+plt.title('Correlation Heatmap')
+plt.show()
+
+# Select highly correlated features with the target
+threshold = 0.1
+corr_target = abs(corr["Churn_Yes"])
+relevant_features = corr_target[corr_target > threshold]
+selected_features = relevant_features.index.drop('Churn_Yes').tolist()
+
+print("Selected features based on correlation threshold:")
+print(selected_features)
+
+# Update X to include only selected features
+X = df[selected_features]
+
+# Model Building and Evaluation
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+# Define models
+models = {
+    'Logistic Regression': LogisticRegression(max_iter=1000),
+    'Decision Tree': DecisionTreeClassifier(),
+    'Random Forest': RandomForestClassifier(),
+    'Gradient Boosting': GradientBoostingClassifier()
+}
+
+# Lists to store results
+model_names = []
+accuracies = []
+precisions = []
+recalls = []
+f1_scores = []
+roc_aucs = []
+
+# Train and evaluate models
+for name, model in models.items():
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    model_names.append(name)
+    accuracies.append(accuracy_score(y_test, y_pred))
+    precisions.append(precision_score(y_test, y_pred))
+    recalls.append(recall_score(y_test, y_pred))
+    f1_scores.append(f1_score(y_test, y_pred))
+    roc_aucs.append(roc_auc_score(y_test, y_pred))
+
+    print(f'{name}:')
+    print(f'Accuracy: {accuracy_score(y_test, y_pred):.4f}')
+    print(f'Precision: {precision_score(y_test, y_pred):.4f}')
+    print(f'Recall: {recall_score(y_test, y_pred):.4f}')
+    print(f'F1 Score: {f1_score(y_test, y_pred):.4f}')
+    print(f'ROC AUC: {roc_auc_score(y_test, y_pred):.4f}\n')
+
+# Create a dataframe for results
+results = pd.DataFrame({
+    'Model': model_names,
+    'Accuracy': accuracies,
+    'Precision': precisions,
+    'Recall': recalls,
+    'F1 Score': f1_scores,
+    'ROC AUC': roc_aucs
+})
+
+# Plot the results
+plt.figure(figsize=(12, 8))
+sns.barplot(x='Model', y='Accuracy', data=results)
+plt.title('Model Accuracy Comparison')
+plt.show()
+
+plt.figure(figsize=(12, 8))
+sns.barplot(x='Model', y='Precision', data=results)
+plt.title('Model Precision Comparison')
+plt.show()
+
+plt.figure(figsize=(12, 8))
+sns.barplot(x='Model', y='Recall', data=results)
+plt.title('Model Recall Comparison')
+plt.show()
+
+plt.figure(figsize=(12, 8))
+sns.barplot(x='Model', y='F1 Score', data=results)
+plt.title('Model F1 Score Comparison')
+plt.show()
+
+plt.figure(figsize=(12, 8))
+sns.barplot(x='Model', y='ROC AUC', data=results)
+plt.title('Model ROC AUC Comparison')
+plt.show()
+
+# Select the best model
+
+# Select the best model based on a chosen metric, e.g., Accuracy
+best_model_index = results['Accuracy'].idxmax()
+best_model_name = results.loc[best_model_index, 'Model']
+best_model = models[best_model_name]
+
+print(f'The best model is {best_model_name}')
+
+# Use the best model for final prediction
+new_data = X_test.iloc[:5]  # Example with first 5 rows of X_test
+new_predictions = best_model.predict(new_data)
+print(f'Predictions by the best model ({best_model_name}): {new_predictions}')
+
+# Retrain the best model on the entire dataset
+best_model.fit(X, y)
+
+# Predict churn probabilities for all customers
+churn_probabilities = best_model.predict_proba(X)[:, 1]
+
+# Add probabilities to the original dataframe
+df['Churn_Probability'] = churn_probabilities
+
+# Identify customers with high churn probability (e.g., probability > 0.5)
+high_churn_customers = df[df['Churn_Probability'] > 0.5]
+
+# Display high churn customers
+print("Customers most likely to leave the company:")
+print(high_churn_customers[['TotalCharges', 'tenure', 'MonthlyCharges', 'Churn_Probability']])
+
+# Visualizations
+# 1. Distribution of Churn Probability
+plt.figure(figsize=(10, 6))
+sns.histplot(df['Churn_Probability'], kde=True, bins=30)
+plt.title('Distribution of Churn Probability')
+plt.xlabel('Churn Probability')
+plt.ylabel('Frequency')
+plt.show()
+
+# 2. Churn Probability vs. Tenure
+plt.figure(figsize=(10, 6))
+sns.scatterplot(x=df['tenure'], y=df['Churn_Probability'])
+plt.title('Churn Probability vs. Tenure')
+plt.xlabel('Tenure')
+plt.ylabel('Churn Probability')
+plt.show()
+
+# 3. Churn Probability vs. Monthly Charges
+plt.figure(figsize=(10, 6))
+sns.scatterplot(x=df['MonthlyCharges'], y=df['Churn_Probability'])
+plt.title('Churn Probability vs. Monthly Charges')
+plt.xlabel('Monthly Charges')
+plt.ylabel('Churn Probability')
+plt.show()
+
+# 4. Churn Probability vs. Total Charges
+plt.figure(figsize=(10, 6))
+sns.scatterplot(x=df['TotalCharges'], y=df['Churn_Probability'])
+plt.title('Churn Probability vs. Total Charges')
+plt.xlabel('Total Charges')
+plt.ylabel('Churn Probability')
+plt.show()
+
+# 5. Churn Probability Histogram for High and Low Churn Groups
+plt.figure(figsize=(10, 6))
+high_churn = df[df['Churn_Probability'] > 0.5]
+low_churn = df[df['Churn_Probability'] <= 0.5]
+sns.histplot(high_churn['Churn_Probability'], color='red', label='High Churn Probability', kde=True, bins=30)
+sns.histplot(low_churn['Churn_Probability'], color='blue', label='Low Churn Probability', kde=True, bins=30)
+plt.title('Churn Probability Histogram for High and Low Churn Groups')
+plt.xlabel('Churn Probability')
+plt.ylabel('Frequency')
+plt.legend()
+plt.show()
+
+# Segment customers into high and low churn probability groups
+threshold = 0.5
+high_churn = df[df['Churn_Probability'] > threshold]
+low_churn = df[df['Churn_Probability'] <= threshold]
+
+# Optionally, you can sort high_churn by descending churn probability to prioritize high-risk customers
+high_churn = high_churn.sort_values(by='Churn_Probability', ascending=False)
+
+# Display or analyze the high_churn group to identify characteristics or patterns
+print(f"Number of high churn probability customers: {len(high_churn)}")
+print(high_churn.head())  # Display the top customers most likely to churn
